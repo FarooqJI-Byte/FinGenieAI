@@ -133,7 +133,7 @@ Backend runs on: http://localhost:8080
 Loan Service: http://localhost:8081
 Frontend: http://localhost:5173
 
-
+**
 📌 Important Notes
 
 node_modules and target folders are excluded (auto-generated)
@@ -158,4 +158,4 @@ Real-time transactions
 Fraud detection
 AI-based recommendations
 
-Designed with scalability, security, and real-world banking use cases in mind.
+Designed with scalability, security, and real-world banking use cases in mind.**
