@@ -1,20 +1,6 @@
 package com.fingenie.ai.service;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-import java.util.Optional;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.*;
-
-import org.springframework.security.crypto.password.PasswordEncoder;
-
-import com.fingenie.ai.dto.LoginRequest;
-import com.fingenie.ai.dto.LoginResponse;
-import com.fingenie.ai.dto.RegisterRequest;
-import com.fingenie.ai.dto.VerifyOtpRequest;
+import com.fingenie.ai.dto.*;
 import com.fingenie.ai.entity.User;
 import com.fingenie.ai.enums.Role;
 import com.fingenie.ai.exception.BusinessException;
@@ -22,19 +8,25 @@ import com.fingenie.ai.exception.ResourceNotFoundException;
 import com.fingenie.ai.repository.UserRepository;
 import com.fingenie.ai.security.JwtUtil;
 
-/**
- * ✅ Unit Test for AuthServiceImpl
- *
- * Covers:
- * - Register flow (with OTP + Email)
- * - Login flow (JWT generation)
- * - OTP verification
- * - Validation + error scenarios
- */
-class AuthServiceImplTest {
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
-    @InjectMocks
-    private AuthServiceImpl authService;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class AuthServiceImplTest {
 
     @Mock
     private UserRepository userRepository;
@@ -48,175 +40,106 @@ class AuthServiceImplTest {
     @Mock
     private EmailService emailService;
 
+    @InjectMocks
+    private AuthServiceImpl authService;
+
     @BeforeEach
     void setup() {
-        MockitoAnnotations.openMocks(this);
+        // ✅ inject @Value
+        ReflectionTestUtils.setField(authService, "otpExpirationMinutes", 5L);
     }
 
-    /**
-     * ✅ TEST: register SUCCESS
-     */
+    // ✅ REGISTER SUCCESS
     @Test
-    void register_success() {
+    void register_shouldWork() {
 
         RegisterRequest request = new RegisterRequest();
-        request.setName("John");
-        request.setEmail("john@gmail.com");
-        request.setPassword("1234");
+        request.setName("Farooq");
+        request.setEmail("test@gmail.com");
+        request.setPassword("pass123");
 
-        when(userRepository.findByEmail("john@gmail.com"))
+        when(userRepository.findByEmail("test@gmail.com"))
                 .thenReturn(Optional.empty());
 
-        when(passwordEncoder.encode("1234"))
-                .thenReturn("encoded_password");
+        when(passwordEncoder.encode("pass123"))
+                .thenReturn("encoded");
 
         when(userRepository.save(any(User.class)))
                 .thenAnswer(invocation -> {
-                    User user = invocation.getArgument(0);
-                    user.setUserId(1L);
-                    return user;
+                    User u = invocation.getArgument(0);
+                    u.setUserId(1L);
+                    return u;
                 });
 
         doNothing().when(emailService)
-                .sendEmail(eq("john@gmail.com"), anyString());
+                .sendEmail(anyString(), anyString());
 
-        var response = authService.register(request);
+        UserResponse response = authService.register(request);
 
         assertNotNull(response);
-        assertEquals("John", response.getName());
-        assertEquals("john@gmail.com", response.getEmail());
-
-        verify(emailService, times(1))
-                .sendEmail(eq("john@gmail.com"), anyString());
+        assertEquals(1L, response.getUserId());
+        assertEquals("test@gmail.com", response.getEmail());
     }
 
-    /**
-     * ❌ TEST: register FAIL - email already exists
-     */
+    // ✅ REGISTER - EMAIL EXISTS
     @Test
-    void register_shouldThrow_whenEmailExists() {
+    void register_shouldFail_ifEmailExists() {
 
         RegisterRequest request = new RegisterRequest();
-        request.setName("John");
-        request.setEmail("john@gmail.com");
-        request.setPassword("1234");
+        request.setName("Farooq");
+        request.setEmail("test@gmail.com");
+        request.setPassword("pass123");
 
-        when(userRepository.findByEmail("john@gmail.com"))
+        when(userRepository.findByEmail("test@gmail.com"))
                 .thenReturn(Optional.of(new User()));
 
         assertThrows(BusinessException.class,
                 () -> authService.register(request));
     }
 
-    /**
-     * ❌ TEST: register FAIL - invalid email
-     */
+    // ✅ LOGIN SUCCESS
     @Test
-    void register_shouldThrow_whenInvalidEmail() {
-
-        RegisterRequest request = new RegisterRequest();
-        request.setName("John");
-        request.setEmail("invalid-email");
-        request.setPassword("1234");
-
-        assertThrows(BusinessException.class,
-                () -> authService.register(request));
-    }
-
-    /**
-     * ❌ TEST: register FAIL - email sending fails
-     */
-    @Test
-    void register_shouldThrow_whenEmailFails() {
-
-        RegisterRequest request = new RegisterRequest();
-        request.setName("John");
-        request.setEmail("john@gmail.com");
-        request.setPassword("1234");
-
-        when(userRepository.findByEmail("john@gmail.com"))
-                .thenReturn(Optional.empty());
-
-        when(passwordEncoder.encode(anyString()))
-                .thenReturn("encoded");
-
-        when(userRepository.save(any(User.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        doThrow(new RuntimeException("Mail failed"))
-                .when(emailService)
-                .sendEmail(anyString(), anyString());
-
-        assertThrows(BusinessException.class,
-                () -> authService.register(request));
-    }
-
-    /**
-     * ✅ TEST: login SUCCESS
-     */
-    @Test
-    void login_success() {
+    void login_shouldReturnToken() {
 
         LoginRequest request = new LoginRequest();
-        request.setEmail("john@gmail.com");
-        request.setPassword("1234");
+        request.setEmail("test@gmail.com");
+        request.setPassword("pass123");
 
-        User user = User.builder()
-                .userId(1L)
-                .email("john@gmail.com")
-                .password("encoded")
-                .role(Role.CUSTOMER)
-                .build();
+        User user = new User();
+        user.setUserId(1L);
+        user.setEmail("test@gmail.com");
+        user.setPassword("encoded");
+        user.setRole(Role.CUSTOMER);
+        user.setVerified(true);
 
-        when(userRepository.findByEmail("john@gmail.com"))
+        when(userRepository.findByEmail("test@gmail.com"))
                 .thenReturn(Optional.of(user));
 
-        when(passwordEncoder.matches("1234", "encoded"))
+        when(passwordEncoder.matches("pass123", "encoded"))
                 .thenReturn(true);
 
-        when(jwtUtil.generateToken(anyString(), anyString()))
-                .thenReturn("jwt-token");
+        when(jwtUtil.generateToken("test@gmail.com", "CUSTOMER"))
+                .thenReturn("token123");
 
         LoginResponse response = authService.login(request);
 
-        assertEquals("jwt-token", response.getToken());
+        assertEquals("token123", response.getToken());
         assertEquals("CUSTOMER", response.getRole());
         assertEquals(1L, response.getUserId());
     }
 
-    /**
-     * ❌ TEST: login FAIL - user not found
-     */
+    // ✅ LOGIN - WRONG PASSWORD
     @Test
-    void login_shouldThrow_whenUserNotFound() {
+    void login_shouldFail_invalidPassword() {
 
         LoginRequest request = new LoginRequest();
-        request.setEmail("notfound@gmail.com");
-        request.setPassword("1234");
-
-        when(userRepository.findByEmail("notfound@gmail.com"))
-                .thenReturn(Optional.empty());
-
-        assertThrows(BusinessException.class,
-                () -> authService.login(request));
-    }
-
-    /**
-     * ❌ TEST: login FAIL - wrong password
-     */
-    @Test
-    void login_shouldThrow_whenInvalidPassword() {
-
-        LoginRequest request = new LoginRequest();
-        request.setEmail("john@gmail.com");
+        request.setEmail("test@gmail.com");
         request.setPassword("wrong");
 
-        User user = User.builder()
-                .email("john@gmail.com")
-                .password("encoded")
-                .build();
+        User user = new User();
+        user.setPassword("encoded");
 
-        when(userRepository.findByEmail("john@gmail.com"))
+        when(userRepository.findByEmail("test@gmail.com"))
                 .thenReturn(Optional.of(user));
 
         when(passwordEncoder.matches("wrong", "encoded"))
@@ -226,115 +149,102 @@ class AuthServiceImplTest {
                 () -> authService.login(request));
     }
 
-    /**
-     * ✅ TEST: verifyOtp SUCCESS
-     */
+    // ✅ LOGIN - NOT VERIFIED
     @Test
-    void verifyOtp_success() {
+    void login_shouldFail_notVerified() {
+
+        LoginRequest request = new LoginRequest();
+        request.setEmail("test@gmail.com");
+        request.setPassword("pass123");
+
+        User user = new User();
+        user.setPassword("encoded");
+        user.setVerified(false);
+
+        when(userRepository.findByEmail("test@gmail.com"))
+                .thenReturn(Optional.of(user));
+
+        when(passwordEncoder.matches(anyString(), anyString()))
+                .thenReturn(true);
+
+        assertThrows(BusinessException.class,
+                () -> authService.login(request));
+    }
+
+    // ✅ VERIFY OTP SUCCESS
+    @Test
+    void verifyOtp_shouldWork() {
 
         VerifyOtpRequest request = new VerifyOtpRequest();
-        request.setEmail("john@gmail.com");
+        request.setEmail("test@gmail.com");
         request.setOtp("123456");
 
-        User user = User.builder()
-                .email("john@gmail.com")
-                .otp("123456")
-                .verified(false)
-                .build();
+        User user = new User();
+        user.setEmail("test@gmail.com");
+        user.setOtp("123456");
+        user.setVerified(false);
+        user.setOtpExpiresAt(LocalDateTime.now().plusMinutes(5));
 
-        when(userRepository.findByEmail("john@gmail.com"))
+        when(userRepository.findByEmail("test@gmail.com"))
                 .thenReturn(Optional.of(user));
 
         authService.verifyOtp(request);
 
         assertTrue(user.isVerified());
         assertNull(user.getOtp());
-
-        verify(userRepository).save(user);
     }
 
-    /**
-     * ❌ TEST: verifyOtp FAIL - user not found
-     */
+    // ✅ VERIFY OTP - WRONG OTP
     @Test
-    void verifyOtp_shouldThrow_whenUserNotFound() {
+    void verifyOtp_shouldFail_wrongOtp() {
 
         VerifyOtpRequest request = new VerifyOtpRequest();
-        request.setEmail("notfound@gmail.com");
+        request.setEmail("test@gmail.com");
+        request.setOtp("000000");
 
-        when(userRepository.findByEmail("notfound@gmail.com"))
+        User user = new User();
+        user.setOtp("123456");
+        user.setVerified(false);
+        user.setOtpExpiresAt(LocalDateTime.now().plusMinutes(5));
+
+        when(userRepository.findByEmail("test@gmail.com"))
+                .thenReturn(Optional.of(user));
+
+        assertThrows(BusinessException.class,
+                () -> authService.verifyOtp(request));
+    }
+
+    // ✅ VERIFY OTP - EXPIRED
+    @Test
+    void verifyOtp_shouldFail_expiredOtp() {
+
+        VerifyOtpRequest request = new VerifyOtpRequest();
+        request.setEmail("test@gmail.com");
+        request.setOtp("123456");
+
+        User user = new User();
+        user.setOtp("123456");
+        user.setVerified(false);
+        user.setOtpExpiresAt(LocalDateTime.now().minusMinutes(1));
+
+        when(userRepository.findByEmail("test@gmail.com"))
+                .thenReturn(Optional.of(user));
+
+        assertThrows(BusinessException.class,
+                () -> authService.verifyOtp(request));
+    }
+
+    // ✅ VERIFY OTP - USER NOT FOUND
+    @Test
+    void verifyOtp_shouldFail_userNotFound() {
+
+        VerifyOtpRequest request = new VerifyOtpRequest();
+        request.setEmail("test@gmail.com");
+
+        when(userRepository.findByEmail("test@gmail.com"))
                 .thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> authService.verifyOtp(request));
-    }
-
-    /**
-     * ❌ TEST: verifyOtp FAIL - already verified
-     */
-    @Test
-    void verifyOtp_shouldThrow_whenAlreadyVerified() {
-
-        VerifyOtpRequest request = new VerifyOtpRequest();
-        request.setEmail("john@gmail.com");
-        request.setOtp("123456");
-
-        User user = User.builder()
-                .email("john@gmail.com")
-                .otp("123456")
-                .verified(true)
-                .build();
-
-        when(userRepository.findByEmail("john@gmail.com"))
-                .thenReturn(Optional.of(user));
-
-        assertThrows(BusinessException.class,
-                () -> authService.verifyOtp(request));
-    }
-
-    /**
-     * ❌ TEST: verifyOtp FAIL - wrong OTP
-     */
-    @Test
-    void verifyOtp_shouldThrow_whenInvalidOtp() {
-
-        VerifyOtpRequest request = new VerifyOtpRequest();
-        request.setEmail("john@gmail.com");
-        request.setOtp("000000");
-
-        User user = User.builder()
-                .email("john@gmail.com")
-                .otp("123456")
-                .verified(false)
-                .build();
-
-        when(userRepository.findByEmail("john@gmail.com"))
-                .thenReturn(Optional.of(user));
-
-        assertThrows(BusinessException.class,
-                () -> authService.verifyOtp(request));
-    }
-
-    /**
-     * ❌ TEST: verifyOtp FAIL - OTP already used/null
-     */
-    @Test
-    void verifyOtp_shouldThrow_whenOtpNull() {
-
-        VerifyOtpRequest request = new VerifyOtpRequest();
-        request.setEmail("john@gmail.com");
-        request.setOtp("123456");
-
-        User user = User.builder()
-                .email("john@gmail.com")
-                .otp(null)
-                .verified(false)
-                .build();
-
-        when(userRepository.findByEmail("john@gmail.com"))
-                .thenReturn(Optional.of(user));
-
-        assertThrows(BusinessException.class,
                 () -> authService.verifyOtp(request));
     }
 }

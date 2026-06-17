@@ -7,23 +7,60 @@ function VerifyOtp() {
   const [otp, setOtp] = useState("");
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
+
   const navigate = useNavigate();
 
+  // ✅ Email validation
+  const validateEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
   const handleVerify = async () => {
-    if (!email || !/^\d{6}$/.test(otp)) {
+
+    // ✅ Email required
+    if (!email) {
       setIsError(true);
-      setMessage("Enter your email and a 6 digit OTP");
+      setMessage("Please enter your email");
       return;
     }
+
+    // ✅ Email format
+    if (!validateEmail(email)) {
+      setIsError(true);
+      setMessage("Please enter a valid email address");
+      return;
+    }
+
+    // ✅ OTP required
+    if (!otp) {
+      setIsError(true);
+      setMessage("Please enter the OTP");
+      return;
+    }
+
+    // ✅ OTP format (exact 6 digits)
+    if (!/^\d{6}$/.test(otp)) {
+      setIsError(true);
+      setMessage("OTP must be exactly 6 digits");
+      return;
+    }
+
     try {
       await verifyOtp({ email, otp });
+
       setIsError(false);
-      setMessage("OTP verified successfully");
+      setMessage("OTP verified successfully ✅");
+
       setTimeout(() => navigate("/"), 1200);
+
     } catch (err) {
       const errors = err.response?.data?.errors;
       setIsError(true);
-      setMessage((errors && Object.values(errors)[0]) || err.response?.data?.message || "Verification failed");
+      setMessage(
+        (errors && Object.values(errors)[0]) ||
+        err.response?.data?.message ||
+        "Verification failed. Please try again."
+      );
     }
   };
 
@@ -32,14 +69,42 @@ function VerifyOtp() {
       <div className="auth-card">
         <h3 className="fw-bold">Verify OTP</h3>
         <p className="muted">Enter the 6 digit code sent to your email.</p>
+
         <label className="form-label">Email Address</label>
-        <input type="email" className="form-control mb-3" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input
+          type="email"
+          className="form-control mb-3"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+
         <label className="form-label">OTP</label>
-        <input className="form-control mb-3" inputMode="numeric" maxLength="6" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} />
-        <button className="btn btn-primary w-100" onClick={handleVerify}>Verify OTP</button>
-        {message && <div className={`alert mt-3 ${isError ? "alert-danger" : "alert-success"}`}>{message}</div>}
+        <input
+          className="form-control mb-3"
+          inputMode="numeric"
+          maxLength="6"
+          value={otp}
+          onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+        />
+
+        <button className="btn btn-primary w-100" onClick={handleVerify}>
+          Verify OTP
+        </button>
+
+        {message && (
+          <div className={`alert mt-3 ${isError ? "alert-danger" : "alert-success"}`}>
+            {message}
+          </div>
+        )}
+
         <p className="text-center muted mt-3 mb-0">
-          Back to <button className="btn btn-link p-0 fw-bold" onClick={() => navigate("/")}>Login</button>
+          Back to{" "}
+          <button
+            className="btn btn-link p-0 fw-bold"
+            onClick={() => navigate("/")}
+          >
+            Login
+          </button>
         </p>
       </div>
     </div>

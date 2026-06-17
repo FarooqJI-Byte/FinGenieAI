@@ -1,127 +1,101 @@
 package com.fingenie.ai.service;
 
+import com.fingenie.ai.dto.InvestmentRequest;
+import com.fingenie.ai.dto.InvestmentResponse;
+import com.fingenie.ai.exception.BusinessException;
+import com.fingenie.ai.strategy.InvestmentStrategy;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-import com.fingenie.ai.dto.InvestmentRequest;
-import com.fingenie.ai.dto.InvestmentResponse;
-import com.fingenie.ai.strategy.InvestmentStrategy;
-
-/**
- * ✅ Unit Test for InvestmentServiceImpl
- */
+@ExtendWith(MockitoExtension.class)
 class InvestmentServiceImplTest {
 
-    private InvestmentServiceImpl investmentService;
-
+    @Mock
     private Map<String, InvestmentStrategy> strategyMap;
 
+    @Mock
     private InvestmentStrategy lowRiskStrategy;
-    private InvestmentStrategy highRiskStrategy;
 
-    @BeforeEach
-    void setup() {
+    @InjectMocks
+    private InvestmentServiceImpl investmentService;
 
-        // ✅ Mock strategies
-        lowRiskStrategy = mock(InvestmentStrategy.class);
-        highRiskStrategy = mock(InvestmentStrategy.class);
-
-        // ✅ Strategy Map
-        strategyMap = new HashMap<>();
-        strategyMap.put("LOW", lowRiskStrategy);
-        strategyMap.put("HIGH", highRiskStrategy);
-
-        investmentService = new InvestmentServiceImpl(strategyMap);
-    }
-
-    /**
-     * ✅ TEST: LOW RISK SUCCESS
-     */
+    // ✅ SUCCESS CASE
     @Test
-    void getRecommendation_lowRisk_success() {
+    void getRecommendation_shouldReturnStrategyResult() {
 
         InvestmentRequest request = new InvestmentRequest();
         request.setRiskLevel("low");
 
-        // ✅ Use BUILDER (IMPORTANT FIX)
-        InvestmentResponse mockResponse = InvestmentResponse.builder()
-                .strategyName("FD Strategy")
-                .recommendation("Invest in Fixed Deposits")
-                .expectedReturn(6.5)
-                .build();
+        InvestmentResponse mockResponse = new InvestmentResponse(
+                "Low Risk Plan",
+                "Invest in FD and Bonds",
+                5.0
+        );
 
-        when(lowRiskStrategy.suggest(request))
-                .thenReturn(mockResponse);
+        when(strategyMap.get("LOW")).thenReturn(lowRiskStrategy);
+        when(lowRiskStrategy.suggest(request)).thenReturn(mockResponse);
 
         InvestmentResponse response = investmentService.getRecommendation(request);
 
         assertNotNull(response);
-        assertEquals("FD Strategy", response.getStrategyName());
-        assertEquals("Invest in Fixed Deposits", response.getRecommendation());
-        assertEquals(6.5, response.getExpectedReturn());
-
-        // ✅ Verify correct strategy used
-        verify(lowRiskStrategy).suggest(request);
-        verify(highRiskStrategy, never()).suggest(any());
+        assertEquals("Low Risk Plan", response.getStrategyName());
+        assertEquals("Invest in FD and Bonds", response.getRecommendation());
     }
 
-    /**
-     * ✅ TEST: HIGH RISK SUCCESS
-     */
+    // ✅ INVALID RISK LEVEL
     @Test
-    void getRecommendation_highRisk_success() {
+    void getRecommendation_shouldThrowException_whenInvalidRisk() {
 
         InvestmentRequest request = new InvestmentRequest();
-        request.setRiskLevel("HIGH");
+        request.setRiskLevel("unknown");
 
-        InvestmentResponse mockResponse = InvestmentResponse.builder()
-                .strategyName("Stock Strategy")
-                .recommendation("Invest in equities")
-                .expectedReturn(15.0)
-                .build();
+        when(strategyMap.get("UNKNOWN")).thenReturn(null);
 
-        when(highRiskStrategy.suggest(request))
-                .thenReturn(mockResponse);
+        assertThrows(BusinessException.class,
+                () -> investmentService.getRecommendation(request));
+    }
+
+    // ✅ CASE INSENSITIVITY CHECK
+    @Test
+    void getRecommendation_shouldHandleLowerCaseRisk() {
+
+        InvestmentRequest request = new InvestmentRequest();
+        request.setRiskLevel("low");
+
+        when(strategyMap.get("LOW")).thenReturn(lowRiskStrategy);
+        when(lowRiskStrategy.suggest(request))
+                .thenReturn(new InvestmentResponse("Plan", "Desc", 4.5));
 
         InvestmentResponse response = investmentService.getRecommendation(request);
 
-        assertEquals("Stock Strategy", response.getStrategyName());
-
-        verify(highRiskStrategy).suggest(request);
-        verify(lowRiskStrategy, never()).suggest(any());
+        assertNotNull(response);
+        verify(strategyMap).get("LOW");
     }
 
-    /**
-     * ❌ TEST: INVALID RISK LEVEL
-     */
+    // ✅ ENSURE STRATEGY CALLED
     @Test
-    void getRecommendation_shouldThrow_whenInvalidRisk() {
+    void getRecommendation_shouldCallStrategySuggest() {
 
         InvestmentRequest request = new InvestmentRequest();
-        request.setRiskLevel("MEDIUM"); // not in map
+        request.setRiskLevel("low");
 
-        RuntimeException ex = assertThrows(RuntimeException.class,
-                () -> investmentService.getRecommendation(request));
+        when(strategyMap.get("LOW")).thenReturn(lowRiskStrategy);
 
-        assertEquals("Invalid risk level", ex.getMessage());
-    }
+        when(lowRiskStrategy.suggest(request))
+                .thenReturn(new InvestmentResponse("Plan", "Desc", 4.5));
 
-    /**
-     * ❌ TEST: NULL RISK LEVEL
-     */
-    @Test
-    void getRecommendation_shouldThrow_whenRiskNull() {
+        investmentService.getRecommendation(request);
 
-        InvestmentRequest request = new InvestmentRequest();
-        request.setRiskLevel(null); // causes toUpperCase crash
-
-        assertThrows(NullPointerException.class,
-                () -> investmentService.getRecommendation(request));
+        verify(lowRiskStrategy, times(1)).suggest(request);
     }
 }

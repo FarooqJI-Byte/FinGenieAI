@@ -1,28 +1,31 @@
 package com.fingenie.ai.service;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Mockito.*;
-
-import java.time.LocalDateTime;
-import java.util.Optional;
+import com.fingenie.ai.dto.ApiResponse;
+import com.fingenie.ai.dto.LoanRequest;
+import com.fingenie.ai.entity.User;
+import com.fingenie.ai.exception.ResourceNotFoundException;
+import com.fingenie.ai.repository.UserRepository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
-import com.fingenie.ai.dto.ApiResponse;
-import com.fingenie.ai.dto.LoanRequest;
-import com.fingenie.ai.entity.User;
-import com.fingenie.ai.repository.UserRepository;
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class LoanClientServiceImplTest {
@@ -34,132 +37,193 @@ class LoanClientServiceImplTest {
     private UserRepository userRepository;
 
     @InjectMocks
-    private LoanClientServiceImpl loanClientService;
+    private LoanClientServiceImpl loanService;
 
-    private User mockUser;
-
-    private static final String BASE_URL = "http://localhost:8081/loans";
+    private User user;
 
     @BeforeEach
-    void setUp() {
-        mockUser = User.builder()
-                .userId(1L)
-                .email("test@gmail.com")
-                .build();
+    void setup() {
+        ReflectionTestUtils.setField(
+                loanService,
+                "loanServiceBaseUrl",
+                "http://localhost:8082"
+        );
 
-        UsernamePasswordAuthenticationToken auth =
-                new UsernamePasswordAuthenticationToken("test@gmail.com", null, null);
+        user = new User();
+        user.setUserId(1L);
+        user.setEmail("test@gmail.com");
 
-        SecurityContextHolder.getContext().setAuthentication(auth);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("test@gmail.com", null)
+        );
     }
 
-    private ApiResponse<Object> buildResponse(String message) {
-        return new ApiResponse<>(200, message, null, LocalDateTime.now());
-    }
-
+    // ✅ APPLY LOAN
     @Test
-    void testApplyLoan() {
+    void applyLoan_shouldCallPostAPI() {
+
         LoanRequest request = new LoanRequest();
-        ApiResponse<Object> mockResponse = buildResponse("Success");
 
         when(userRepository.findByEmail("test@gmail.com"))
-                .thenReturn(Optional.of(mockUser));
+                .thenReturn(Optional.of(user));
+
+        ApiResponse<Object> mockResponse = new ApiResponse<>(
+                200,
+                "success",
+                null,
+                LocalDateTime.now()
+        );
 
         when(restTemplate.postForObject(
-                BASE_URL + "/apply",
+                "http://localhost:8082/apply",
                 request,
-                ApiResponse.class))
-                .thenReturn(mockResponse);
+                ApiResponse.class
+        )).thenReturn(mockResponse);
 
-        ApiResponse<?> response = loanClientService.applyLoan(request);
+        ApiResponse<?> response = loanService.applyLoan(request);
 
         assertNotNull(response);
-        assertEquals("Success", response.getMessage());
+        assertTrue(response.isSuccess());
 
-        verify(userRepository, times(1)).findByEmail("test@gmail.com");
-        verify(restTemplate, times(1))
-                .postForObject(BASE_URL + "/apply", request, ApiResponse.class);
+        verify(restTemplate).postForObject(
+                eq("http://localhost:8082/apply"),
+                eq(request),
+                eq(ApiResponse.class)
+        );
+
+        assertEquals(1L, request.getUserId());
     }
 
+    // ✅ APPLY LOAN - USER NOT FOUND
     @Test
-    void testGetMyLoans() {
-        ApiResponse<Object> mockResponse = buildResponse("Fetched");
+    void applyLoan_shouldThrow_ifUserNotFound() {
+
+        LoanRequest request = new LoanRequest();
 
         when(userRepository.findByEmail("test@gmail.com"))
-                .thenReturn(Optional.of(mockUser));
+                .thenReturn(Optional.empty());
 
-        when(restTemplate.getForObject(
-                BASE_URL + "/user/1",
-                ApiResponse.class))
-                .thenReturn(mockResponse);
-
-        ApiResponse<?> response = loanClientService.getMyLoans();
-
-        assertNotNull(response);
-        assertEquals("Fetched", response.getMessage());
+        assertThrows(ResourceNotFoundException.class,
+                () -> loanService.applyLoan(request));
     }
 
+    // ✅ GET LOANS BY USER
     @Test
-    void testGetLoansByUser() {
-        ApiResponse<Object> mockResponse = buildResponse("User Loans");
+    void getLoansByUser_shouldCallGetAPI() {
+
+        ApiResponse<Object> mockResponse = new ApiResponse<>(
+                200,
+                "ok",
+                null,
+                LocalDateTime.now()
+        );
 
         when(restTemplate.getForObject(
-                BASE_URL + "/user/1",
-                ApiResponse.class))
-                .thenReturn(mockResponse);
+                "http://localhost:8082/user/1",
+                ApiResponse.class
+        )).thenReturn(mockResponse);
 
-        ApiResponse<?> response = loanClientService.getLoansByUser(1L);
+        ApiResponse<?> response = loanService.getLoansByUser(1L);
 
         assertNotNull(response);
-        assertEquals("User Loans", response.getMessage());
+        verify(restTemplate).getForObject(
+                "http://localhost:8082/user/1",
+                ApiResponse.class
+        );
     }
 
+    // ✅ GET ALL LOANS
     @Test
-    void testGetAllLoans() {
-        ApiResponse<Object> mockResponse = buildResponse("All Loans");
+    void getAllLoans_shouldCallGetAPI() {
+
+        ApiResponse<Object> mockResponse = new ApiResponse<>(
+                200,
+                "ok",
+                null,
+                LocalDateTime.now()
+        );
 
         when(restTemplate.getForObject(
-                BASE_URL + "/all",
-                ApiResponse.class))
-                .thenReturn(mockResponse);
+                "http://localhost:8082/all",
+                ApiResponse.class
+        )).thenReturn(mockResponse);
 
-        ApiResponse<?> response = loanClientService.getAllLoans();
+        ApiResponse<?> response = loanService.getAllLoans();
 
         assertNotNull(response);
-        assertEquals("All Loans", response.getMessage());
     }
 
+    // ✅ GET MY LOANS
     @Test
-    void testApproveLoan() {
-        ApiResponse<Object> mockResponse = buildResponse("Approved");
+    void getMyLoans_shouldCallUserLoans() {
+
+        when(userRepository.findByEmail("test@gmail.com"))
+                .thenReturn(Optional.of(user));
+
+        ApiResponse<Object> mockResponse = new ApiResponse<>(
+                200,
+                "ok",
+                null,
+                LocalDateTime.now()
+        );
+
+        when(restTemplate.getForObject(
+                "http://localhost:8082/user/1",
+                ApiResponse.class
+        )).thenReturn(mockResponse);
+
+        ApiResponse<?> response = loanService.getMyLoans();
+
+        assertNotNull(response);
+    }
+
+    // ✅ APPROVE LOAN
+    @Test
+    void approveLoan_shouldCallPutAPI() {
+
+        ApiResponse<Object> mockResponse = new ApiResponse<>(
+                200,
+                "approved",
+                null,
+                LocalDateTime.now()
+        );
 
         when(restTemplate.exchange(
-                BASE_URL + "/1/approve",
-                HttpMethod.PUT,
-                null,
-                ApiResponse.class))
-                .thenReturn(ResponseEntity.ok(mockResponse));
+                eq("http://localhost:8082/10/approve"),
+                eq(HttpMethod.PUT),
+                isNull(),
+                eq(ApiResponse.class)
+        )).thenReturn(ResponseEntity.ok(mockResponse));
 
-        ApiResponse<?> response = loanClientService.approveLoan(1L);
+        ApiResponse<?> response = loanService.approveLoan(10L);
 
         assertNotNull(response);
-        assertEquals("Approved", response.getMessage());
+        assertEquals("approved", response.getMessage());
+        assertTrue(response.isSuccess());
     }
 
+    // ✅ REJECT LOAN
     @Test
-    void testRejectLoan() {
-        ApiResponse<Object> mockResponse = buildResponse("Rejected");
+    void rejectLoan_shouldCallPutAPI() {
+
+        ApiResponse<Object> mockResponse = new ApiResponse<>(
+                200,
+                "rejected",
+                null,
+                LocalDateTime.now()
+        );
 
         when(restTemplate.exchange(
-                BASE_URL + "/1/reject",
-                HttpMethod.PUT,
-                null,
-                ApiResponse.class))
-                .thenReturn(ResponseEntity.ok(mockResponse));
+                eq("http://localhost:8082/10/reject"),
+                eq(HttpMethod.PUT),
+                isNull(),
+                eq(ApiResponse.class)
+        )).thenReturn(ResponseEntity.ok(mockResponse));
 
-        ApiResponse<?> response = loanClientService.rejectLoan(1L);
+        ApiResponse<?> response = loanService.rejectLoan(10L);
 
         assertNotNull(response);
-        assertEquals("Rejected", response.getMessage());
+        assertEquals("rejected", response.getMessage());
+        assertTrue(response.isSuccess());
     }
 }

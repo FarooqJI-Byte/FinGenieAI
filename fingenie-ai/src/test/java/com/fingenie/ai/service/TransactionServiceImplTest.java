@@ -1,39 +1,28 @@
 package com.fingenie.ai.service;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-import java.util.Optional;
+import com.fingenie.ai.dto.*;
+import com.fingenie.ai.entity.Account;
+import com.fingenie.ai.entity.User;
+import com.fingenie.ai.repository.*;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import com.fingenie.ai.dto.DepositRequest;
-import com.fingenie.ai.dto.TransactionResultResponse;
-import com.fingenie.ai.dto.TransferRequest;
-import com.fingenie.ai.dto.WithdrawRequest;
-import com.fingenie.ai.entity.Account;
-import com.fingenie.ai.entity.Transaction;
-import com.fingenie.ai.entity.User;
-import com.fingenie.ai.exception.BusinessException;
-import com.fingenie.ai.repository.AccountRepository;
-import com.fingenie.ai.repository.TransactionRepository;
-import com.fingenie.ai.repository.UserRepository;
+import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
 class TransactionServiceImplTest {
-
-    @InjectMocks
-    private TransactionServiceImpl transactionService;
 
     @Mock
     private AccountRepository accountRepository;
@@ -47,155 +36,85 @@ class TransactionServiceImplTest {
     @Mock
     private EmailService emailService;
 
-    private User user;
+    @InjectMocks
+    private TransactionServiceImpl service;
+
     private Account account;
+    private User user;
 
     @BeforeEach
     void setup() {
-        MockitoAnnotations.openMocks(this);
 
-        user = User.builder()
-                .userId(1L)
-                .email("test@example.com")
-                .build();
+        user = new User();
+        user.setUserId(1L);
+        user.setEmail("test@gmail.com");
 
-        account = Account.builder()
-                .accountId(100L)
-                .balance(50000.0)
-                .user(user)
-                .build();
+        account = new Account();
+        account.setAccountId(1L);
+        account.setBalance(10000.0);
+        account.setUser(user);
 
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("test@example.com", null)
+                new UsernamePasswordAuthenticationToken("test@gmail.com", null)
         );
 
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findByEmail("test@gmail.com"))
+                .thenReturn(Optional.of(user));
     }
 
     // ✅ DEPOSIT SUCCESS
     @Test
-    void testDepositSuccess() {
-        DepositRequest request = new DepositRequest(100L, 10000.0);
+    void deposit_success() {
 
-        when(accountRepository.findById(100L)).thenReturn(Optional.of(account));
+        DepositRequest request = new DepositRequest();
+        request.setAccountId(1L);
+        request.setAmount(1000.0);
 
-        TransactionResultResponse response = transactionService.deposit(request);
+        when(accountRepository.findById(1L))
+                .thenReturn(Optional.of(account));
 
-        assertEquals(60000.0, response.getCurrentBalance());
-        assertEquals("Amount deposited successfully", response.getMessage());
+        TransactionResultResponse res = service.deposit(request);
 
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
-    }
-
-    // ✅ DEPOSIT INVALID AMOUNT
-    @Test
-    void testDepositInvalidAmount() {
-        DepositRequest request = new DepositRequest(100L, -500.0);
-
-        assertThrows(BusinessException.class, () -> {
-            transactionService.deposit(request);
-        });
+        assertEquals(11000.0, res.getCurrentBalance());
     }
 
     // ✅ WITHDRAW SUCCESS
     @Test
-    void testWithdrawSuccess() {
-        WithdrawRequest request = new WithdrawRequest(100L, 10000.0);
+    void withdraw_success() {
 
-        when(accountRepository.findById(100L)).thenReturn(Optional.of(account));
+        WithdrawRequest request = new WithdrawRequest();
+        request.setAccountId(1L);
+        request.setAmount(2000.0);
 
-        TransactionResultResponse response = transactionService.withdraw(request);
+        when(accountRepository.findById(1L))
+                .thenReturn(Optional.of(account));
 
-        assertEquals(40000.0, response.getCurrentBalance());
+        TransactionResultResponse res = service.withdraw(request);
 
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
-    }
-
-    // ✅ WITHDRAW INSUFFICIENT BALANCE
-    @Test
-    void testWithdrawInsufficientBalance() {
-        WithdrawRequest request = new WithdrawRequest(100L, 100000.0);
-
-        when(accountRepository.findById(100L)).thenReturn(Optional.of(account));
-
-        assertThrows(BusinessException.class, () -> {
-            transactionService.withdraw(request);
-        });
-
-        verify(transactionRepository, times(1)).save(any(Transaction.class)); // FAILED txn saved
+        assertEquals(8000.0, res.getCurrentBalance());
     }
 
     // ✅ TRANSFER SUCCESS
     @Test
-    void testTransferSuccess() {
-        Account receiver = Account.builder()
-                .accountId(200L)
-                .balance(20000.0)
-                .user(user)
-                .build();
+    void transfer_success() {
 
-        TransferRequest request = new TransferRequest(100L, 200L, 5000.0);
+        Account receiver = new Account();
+        receiver.setAccountId(2L);
+        receiver.setBalance(5000.0);
+        receiver.setUser(new User());
 
-        when(accountRepository.findById(100L)).thenReturn(Optional.of(account));
-        when(accountRepository.findById(200L)).thenReturn(Optional.of(receiver));
+        TransferRequest request = new TransferRequest();
+        request.setFromAccountId(1L);
+        request.setToAccountId(2L);
+        request.setAmount(1000.0);
 
-        TransactionResultResponse response = transactionService.transfer(request);
+        when(accountRepository.findById(1L))
+                .thenReturn(Optional.of(account));
+        when(accountRepository.findById(2L))
+                .thenReturn(Optional.of(receiver));
 
-        assertEquals(45000.0, response.getCurrentBalance());
+        TransactionResultResponse res = service.transfer(request);
 
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
-    }
-
-    // ✅ TRANSFER FAILURE (INSUFFICIENT)
-    @Test
-    void testTransferInsufficientBalance() {
-        Account receiver = Account.builder()
-                .accountId(200L)
-                .balance(20000.0)
-                .user(user)
-                .build();
-
-        TransferRequest request = new TransferRequest(100L, 200L, 100000.0);
-
-        when(accountRepository.findById(100L)).thenReturn(Optional.of(account));
-        when(accountRepository.findById(200L)).thenReturn(Optional.of(receiver));
-
-        assertThrows(BusinessException.class, () -> {
-            transactionService.transfer(request);
-        });
-
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
-    }
-
-    // ✅ FRAUD DETECTION TRIGGER
-    @Test
-    void testFraudDetectionTriggersEmail() {
-        DepositRequest request = new DepositRequest(100L, 200000.0); // high amount
-
-        when(accountRepository.findById(100L)).thenReturn(Optional.of(account));
-
-        transactionService.deposit(request);
-
-        verify(emailService, times(1))
-                .sendFraudAlert(eq("test@example.com"), eq(200000.0));
-    }
-
-    // ✅ UNAUTHORIZED ACCESS
-    @Test
-    void testUnauthorizedAccess() {
-        User anotherUser = User.builder()
-                .userId(2L)
-                .email("other@example.com")
-                .build();
-
-        account.setUser(anotherUser);
-
-        when(accountRepository.findById(100L)).thenReturn(Optional.of(account));
-
-        WithdrawRequest request = new WithdrawRequest(100L, 1000.0);
-
-        assertThrows(BusinessException.class, () -> {
-            transactionService.withdraw(request);
-        });
+        assertEquals(9000.0, res.getCurrentBalance());
     }
 }

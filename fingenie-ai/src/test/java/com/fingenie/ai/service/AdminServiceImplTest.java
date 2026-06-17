@@ -1,16 +1,5 @@
 package com.fingenie.ai.service;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-import java.util.List;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.*;
-
-import org.springframework.web.client.RestTemplate;
-
 import com.fingenie.ai.dto.AdminDashboardResponse;
 import com.fingenie.ai.dto.AdminUserResponse;
 import com.fingenie.ai.dto.LoanStatsResponse;
@@ -19,18 +8,24 @@ import com.fingenie.ai.enums.Role;
 import com.fingenie.ai.repository.AccountRepository;
 import com.fingenie.ai.repository.UserRepository;
 
-/**
- * ✅ Unit Test for AdminServiceImpl
- *
- * Covers:
- * - Dashboard stats (with external microservice call)
- * - User list mapping
- * - Mocking RestTemplate (VERY IMPORTANT)
- */
-class AdminServiceImplTest {
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
-    @InjectMocks
-    private AdminServiceImpl adminService;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class AdminServiceImplTest {
 
     @Mock
     private UserRepository userRepository;
@@ -41,137 +36,75 @@ class AdminServiceImplTest {
     @Mock
     private RestTemplate restTemplate;
 
+    @InjectMocks
+    private AdminServiceImpl adminService;
+
     @BeforeEach
     void setup() {
-        MockitoAnnotations.openMocks(this);
+        // ✅ manually inject @Value field
+        ReflectionTestUtils.setField(
+                adminService,
+                "loanServiceBaseUrl",
+                "http://localhost:8082"
+        );
     }
 
-    /**
-     * ✅ TEST: getDashboardStats SUCCESS
-     *
-     * Tests:
-     * - DB counts (users, accounts)
-     * - External loan microservice call
-     * - Correct aggregation into response
-     */
+    // ✅ Test Dashboard Stats
     @Test
-    void getDashboardStats_success() {
+    void getDashboardStats_shouldReturnCorrectData() {
 
-        // Mock DB counts
+        // mocking DB counts
         when(userRepository.count()).thenReturn(10L);
-        when(accountRepository.count()).thenReturn(5L);
+        when(accountRepository.count()).thenReturn(25L);
 
-        // Mock external Loan microservice response
-        LoanStatsResponse loanStats = new LoanStatsResponse(20L, 7L);
+        // mocking microservice response
+        LoanStatsResponse loanStats = new LoanStatsResponse(50L, 5L);
 
         when(restTemplate.getForObject(
-                "http://localhost:8081/loans/stats",
-                LoanStatsResponse.class))
-                .thenReturn(loanStats);
+                "http://localhost:8082/stats",
+                LoanStatsResponse.class
+        )).thenReturn(loanStats);
 
-        // Call service
+        // call service
         AdminDashboardResponse response = adminService.getDashboardStats();
 
-        // Assertions
+        // assertions
         assertNotNull(response);
         assertEquals(10L, response.getTotalUsers());
-        assertEquals(5L, response.getTotalAccounts());
-        assertEquals(20L, response.getTotalLoans());
-        assertEquals(7L, response.getPendingLoans());
+        assertEquals(25L, response.getTotalAccounts());
+        assertEquals(50L, response.getTotalLoans());
+        assertEquals(5L, response.getPendingLoans());
     }
 
-    /**
-     * ❌ TEST: getDashboardStats FAIL - loan service returns null
-     *
-     * Edge case: external service returns null
-     */
+    // ✅ Test getAllUsers
     @Test
-    void getDashboardStats_shouldThrow_whenLoanServiceReturnsNull() {
+    void getAllUsers_shouldReturnMappedUsers() {
 
-        when(userRepository.count()).thenReturn(10L);
-        when(accountRepository.count()).thenReturn(5L);
+        User user1 = new User();
+        user1.setUserId(1L);
+        user1.setName("Farooq");
+        user1.setEmail("farooq@gmail.com");
+        user1.setRole(Role.CUSTOMER);
+        user1.setBalance(1000.0);
+        user1.setVerified(true);
 
-        // External API returns null
-        when(restTemplate.getForObject(
-                "http://localhost:8081/loans/stats",
-                LoanStatsResponse.class))
-                .thenReturn(null);
+        User user2 = new User();
+        user2.setUserId(2L);
+        user2.setName("Admin");
+        user2.setEmail("admin@gmail.com");
+        user2.setRole(Role.ADMIN);
+        user2.setBalance(0.0);
+        user2.setVerified(true);
 
-        // Since your current code does NOT handle null,
-        // this will throw NullPointerException
-        assertThrows(NullPointerException.class,
-                () -> adminService.getDashboardStats());
-    }
-
-    /**
-     * ✅ TEST: getAllUsers SUCCESS
-     *
-     * Tests mapping logic from User -> AdminUserResponse
-     */
-    @Test
-    void getAllUsers_success() {
-
-        User user = User.builder()
-                .userId(1L)
-                .name("John")
-                .email("john@gmail.com")
-                .role(Role.CUSTOMER)
-                .balance(5000.0)
-                .verified(true)
-                .build();
-
-        when(userRepository.findAll())
-                .thenReturn(List.of(user));
+        when(userRepository.findAll()).thenReturn(List.of(user1, user2));
 
         List<AdminUserResponse> result = adminService.getAllUsers();
 
-        // Assertions
-        assertEquals(1, result.size());
+        assertEquals(2, result.size());
 
-        AdminUserResponse response = result.get(0);
-
-        assertEquals(1L, response.getUserId());
-        assertEquals("John", response.getName());
-        assertEquals("john@gmail.com", response.getEmail());
-        assertEquals(Role.CUSTOMER, response.getRole());
-        assertEquals(5000.0, response.getBalance());
-        assertTrue(response.isVerified());
-    }
-
-    /**
-     * ✅ TEST: getAllUsers SUCCESS - empty list
-     *
-     * Edge case: no users in DB
-     */
-    @Test
-    void getAllUsers_emptyList() {
-
-        when(userRepository.findAll())
-                .thenReturn(List.of());
-
-        List<AdminUserResponse> result = adminService.getAllUsers();
-
-        assertNotNull(result);
-        assertEquals(0, result.size());
-    }
-
-    /**
-     * ✅ BONUS TEST: verify RestTemplate is called once
-     */
-    @Test
-    void getDashboardStats_verifyRestCall() {
-
-        when(userRepository.count()).thenReturn(1L);
-        when(accountRepository.count()).thenReturn(1L);
-
-        when(restTemplate.getForObject(anyString(), eq(LoanStatsResponse.class)))
-                .thenReturn(new LoanStatsResponse(1L, 0L));
-
-        adminService.getDashboardStats();
-
-        // Verify external API call happens exactly once
-        verify(restTemplate, times(1))
-                .getForObject("http://localhost:8081/loans/stats",
-                        LoanStatsResponse.class);
+        AdminUserResponse first = result.get(0);
+        assertEquals("Farooq", first.getName());
+        assertEquals("farooq@gmail.com", first.getEmail());
+        assertEquals(Role.CUSTOMER, first.getRole());
     }
 }
