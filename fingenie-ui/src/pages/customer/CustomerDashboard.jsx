@@ -9,6 +9,7 @@ function CustomerDashboard() {
   const [myId, setMyId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [showBalance, setShowBalance] = useState(false); // ✅ NEW (UI only)
 
   const fetchDashboard = async () => {
     try {
@@ -46,24 +47,44 @@ function CustomerDashboard() {
             <div>
               <div className="eyebrow">Customer dashboard</div>
               <h1 className="page-title">Welcome back</h1>
-              <p className="page-subtitle mb-0">Your accounts, money movement, and AI insights in one place.</p>
-              <small className="muted">User ID: {myId || "Loading"}</small>
+              <p className="page-subtitle mb-0">
+                Your accounts, money movement, and AI insights in one place.
+              </p>
+              <small className="muted">
+                User ID: {myId || "Loading"}
+              </small>
             </div>
+
             <div className="text-md-end">
               <div className="muted">Total available balance</div>
-              <div className="stat-value text-success">{money.format(totalBalance)}</div>
+
+              {/* ✅ HIDE / SHOW BALANCE */}
+              <div className="stat-value text-success">
+                {showBalance ? money.format(totalBalance) : "₹ •••••••"}
+              </div>
+
+              <button
+                className="btn btn-sm btn-outline-light mt-1"
+                onClick={() => setShowBalance(!showBalance)}
+              >
+                {showBalance ? "Hide" : "Show"}
+              </button>
             </div>
           </div>
         </div>
       </section>
 
       {message && <div className="alert alert-danger">{message}</div>}
-      {loading && <div className="loading-state mb-4">Loading your banking overview...</div>}
+      {loading && (
+        <div className="loading-state mb-4">
+          Loading your banking overview...
+        </div>
+      )}
 
       <div className="row g-3 mb-4">
         {[
           ["Accounts", accounts.length],
-          ["Balance", money.format(totalBalance)],
+          ["Balance", showBalance ? money.format(totalBalance) : "Hidden"],
           ["Security", "MFA Active"],
           ["AI Advisor", "Ready"],
         ].map(([label, value]) => (
@@ -79,7 +100,11 @@ function CustomerDashboard() {
       <div className="row g-3 mb-4">
         {actions.map((action) => (
           <div className="col-12 col-md-6 col-xl-3" key={action.title}>
-            <button type="button" className="action-card text-start w-100" onClick={() => navigate(action.path)}>
+            <button
+              type="button"
+              className="action-card text-start w-100"
+              onClick={() => navigate(action.path)}
+            >
               <div className="eyebrow">{action.title}</div>
               <h5 className="mt-2 mb-1">{action.title}</h5>
               <p className="muted mb-0">{action.text}</p>
@@ -94,27 +119,49 @@ function CustomerDashboard() {
             <h4 className="mb-1">Your Accounts</h4>
             <p className="muted mb-0">Recently created banking accounts</p>
           </div>
-          <button className="btn btn-outline-primary btn-sm" onClick={() => navigate("/accounts")}>Manage</button>
+          <button
+            className="btn btn-outline-primary btn-sm"
+            onClick={() => navigate("/accounts")}
+          >
+            Manage
+          </button>
         </div>
 
         {accounts.length === 0 ? (
-          <div className="empty-state">No accounts yet. Create your first account from the Accounts page.</div>
+          <div className="empty-state">
+            No accounts yet. Create your first account from the Accounts page.
+          </div>
         ) : (
           <div className="table-wrap">
             <table className="bank-table">
               <thead>
                 <tr>
+                  <th>Account ID</th> {/* ✅ NEW */}
                   <th>Type</th>
                   <th>Account number</th>
                   <th className="text-end">Balance</th>
                 </tr>
               </thead>
+
               <tbody>
                 {accounts.slice(0, 3).map((acc) => (
                   <tr key={acc.accountId}>
-                    <td><span className="pill primary">{acc.accountType}</span></td>
+                    <td>{acc.accountId}</td> {/* ✅ NEW */}
+
+                    <td>
+                      <span className="pill primary">
+                        {acc.accountType}
+                      </span>
+                    </td>
+
                     <td>{acc.accountNumber}</td>
-                    <td className="text-end fw-bold">{money.format(acc.balance || 0)}</td>
+
+                    {/* ✅ MASKED BALANCE */}
+                    <td className="text-end fw-bold">
+                      {showBalance
+                        ? money.format(acc.balance || 0)
+                        : "••••••"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
